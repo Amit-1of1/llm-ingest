@@ -1,0 +1,12 @@
+{
+  "questions": [
+    {
+      "id": "protein_fiber_title",
+      "question": "Which document discusses protein fibers with self-recoverable mechanical properties?",
+      "expected_terms": ["protein fibers", "self-recoverable", "dynamic imine"],
+      "expected_files": ["bad_title_sentence.md"],
+      "mode": "hybrid",
+      "limit": 3
+    }
+  ]
+}

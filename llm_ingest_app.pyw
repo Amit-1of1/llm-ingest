@@ -18,6 +18,8 @@ from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 import llm_ingest
+import llm_backends
+import llm_benchmark
 import llm_knowledge_graph
 from llm_ingest import PDFConfig
 
@@ -28,6 +30,7 @@ NAV_ITEMS = (
     ("pdf", "PDF Settings"),
     ("diagnostics", "Diagnostics"),
     ("graph", "Knowledge Graph"),
+    ("benchmark", "Benchmark"),
     ("activity", "Activity"),
 )
 
@@ -367,6 +370,7 @@ class IngestApp:
         self.table_strategy = tk.StringVar(value="lines_strict")
         self.hardened_mode = tk.BooleanVar(value=True)
         self.privacy_mode = tk.BooleanVar(value=False)
+        self.write_sidecars = tk.BooleanVar(value=False)
         self.allow_external_marker_python = tk.BooleanVar(value=False)
         self.backend_timeout_seconds = tk.StringVar(value=str(llm_ingest.DEFAULT_BACKEND_TIMEOUT_SECONDS))
         self.max_input_mb = tk.StringVar(value=str(llm_ingest.DEFAULT_MAX_INPUT_MB))
@@ -392,6 +396,9 @@ class IngestApp:
         self.kg_limit = tk.StringVar(value="8")
         self.kg_retrieval_mode = tk.StringVar(value="hybrid")
         self.kg_summary_text = tk.StringVar(value="No graph has been built yet.")
+        self.benchmark_output_dir = tk.StringVar()
+        self.benchmark_questions_path = tk.StringVar()
+        self.benchmark_summary_text = tk.StringVar(value="No benchmark has been run yet.")
 
         self.summary_vars = {
             "Mode": tk.StringVar(value="Single file"),
@@ -586,6 +593,13 @@ class IngestApp:
         graph.grid_rowconfigure(0, weight=1)
         self._knowledge_graph_page(graph).grid(row=0, column=0, sticky="nsew")
         self.page_frames["graph"] = graph
+
+        benchmark = tk.Frame(parent, bg=COLORS["content"])
+        benchmark.grid(row=0, column=0, sticky="nsew")
+        benchmark.grid_columnconfigure(0, weight=1)
+        benchmark.grid_rowconfigure(0, weight=1)
+        self._benchmark_page(benchmark).grid(row=0, column=0, sticky="nsew")
+        self.page_frames["benchmark"] = benchmark
 
         activity = tk.Frame(parent, bg=COLORS["content"])
         activity.grid(row=0, column=0, sticky="nsew")
@@ -792,7 +806,7 @@ class IngestApp:
         chunk_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10), pady=(10, 18))
 
         self._field_label(body, "PDF backend").grid(row=0, column=1, sticky="w")
-        backend = self._dropdown(body, self.pdf_backend, ("auto", "custom", "pymupdf4llm", "marker"))
+        backend = self._dropdown(body, self.pdf_backend, llm_ingest.SUPPORTED_PDF_BACKENDS)
         backend.grid(row=1, column=1, sticky="ew", pady=(10, 18))
 
         self._field_label(body, "Table strategy").grid(row=2, column=0, sticky="w")
@@ -891,6 +905,8 @@ class IngestApp:
         hardened_toggle.pack(side="left", padx=(0, 18))
         privacy_toggle = self._checkbutton(toggles, "Privacy mode", self.privacy_mode)
         privacy_toggle.pack(side="left", padx=(0, 18))
+        sidecar_toggle = self._checkbutton(toggles, "Write JSON sidecars", self.write_sidecars)
+        sidecar_toggle.pack(side="left", padx=(0, 18))
         external_marker_toggle = self._checkbutton(toggles, "Allow external Marker Python", self.allow_external_marker_python)
         external_marker_toggle.pack(side="left")
 
@@ -907,6 +923,7 @@ class IngestApp:
                 max_assets_entry,
                 hardened_toggle,
                 privacy_toggle,
+                sidecar_toggle,
                 external_marker_toggle,
             ]
         )
@@ -943,7 +960,7 @@ class IngestApp:
         intro.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         self._bind_wrap_to_width(intro, min_width=260)
 
-        for row in range(5):
+        for row in range(8):
             label = tk.Label(
                 body,
                 text="",
@@ -1340,6 +1357,53 @@ class IngestApp:
         self.kg_results_text.configure(yscrollcommand=text_scroll.set)
         return card
 
+    def _benchmark_page(self, parent: tk.Misc) -> tk.Frame:
+        page = tk.Frame(parent, bg=COLORS["content"])
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(1, weight=1)
+
+        card, body = self._card(page, "Benchmark")
+        card.grid(row=0, column=0, sticky="ew")
+        body.grid_columnconfigure(0, weight=1)
+
+        self._path_field(body, 0, "Benchmark output", self.benchmark_output_dir, self._browse_benchmark_output)
+        self._path_field(body, 2, "Questions JSON", self.benchmark_questions_path, self._browse_benchmark_questions)
+
+        summary = tk.Label(
+            body,
+            textvariable=self.benchmark_summary_text,
+            bg=COLORS["card"],
+            fg=COLORS["muted"],
+            font=self.caption_font,
+            justify="left",
+            anchor="w",
+        )
+        summary.grid(row=4, column=0, sticky="ew", pady=(0, 12))
+        self._bind_wrap_to_width(summary, min_width=260)
+
+        actions = tk.Frame(body, bg=COLORS["card"])
+        actions.grid(row=5, column=0, sticky="w")
+        quality_button = RoundedButton(actions, "Run quality", self._start_quality_benchmark, font=self.button_font, variant="accent", min_width=124, height=40)
+        quality_button.pack(side="left", padx=(0, 10))
+        retrieval_button = RoundedButton(actions, "Run retrieval", self._start_retrieval_benchmark, font=self.button_font, variant="secondary", min_width=132, height=40)
+        retrieval_button.pack(side="left", padx=(0, 10))
+        open_button = RoundedButton(actions, "Open report", self._open_latest_benchmark_report, font=self.button_font, variant="secondary", min_width=124, height=40)
+        open_button.pack(side="left")
+        self.control_widgets.extend([quality_button, retrieval_button, open_button])
+
+        note = tk.Label(
+            page,
+            text="Quality benchmarks scan generated Markdown for known regressions. Retrieval benchmarks query the current graph index using a questions JSON file.",
+            bg=COLORS["content"],
+            fg=COLORS["muted"],
+            font=self.caption_font,
+            justify="left",
+            anchor="w",
+        )
+        note.grid(row=1, column=0, sticky="new", pady=(12, 0))
+        self._bind_wrap_to_width(note, min_width=300)
+        return page
+
     def _guidance_card(self, parent: tk.Misc) -> tk.Frame:
         card, body = self._card(parent, "Guidance")
 
@@ -1578,6 +1642,7 @@ class IngestApp:
         self.audit_baseline_dir.set(str(default_input if default_input.exists() else cwd))
         self.kg_source_dir.set(str(cwd / llm_knowledge_graph.DEFAULT_GRAPH_SOURCE_DIR))
         self.kg_index_dir.set(str(cwd / llm_knowledge_graph.DEFAULT_GRAPH_INDEX_DIR))
+        self.benchmark_output_dir.set(str(cwd / "_benchmark_runs"))
         self._set_mode("folder" if default_input.exists() else "file")
 
     def _refresh_summary(self) -> None:
@@ -1688,6 +1753,19 @@ class IngestApp:
         if selected:
             self.kg_index_dir.set(selected)
 
+    def _browse_benchmark_output(self) -> None:
+        selected = filedialog.askdirectory(title="Select benchmark output folder")
+        if selected:
+            self.benchmark_output_dir.set(selected)
+
+    def _browse_benchmark_questions(self) -> None:
+        selected = filedialog.askopenfilename(
+            title="Select benchmark questions JSON",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if selected:
+            self.benchmark_questions_path.set(selected)
+
     def _open_latest_audit_summary(self) -> None:
         if self.last_audit_report is not None:
             path = Path(self.last_audit_report.report_dir) / "audit_summary.md"
@@ -1702,6 +1780,16 @@ class IngestApp:
     def _open_last_query(self) -> None:
         path = Path(self.kg_index_dir.get().strip() or llm_knowledge_graph.DEFAULT_GRAPH_INDEX_DIR) / "last_query.md"
         self._open_existing_file(path, "Query the graph first; no last_query.md was found.")
+
+    def _open_latest_benchmark_report(self) -> None:
+        root = Path(self.benchmark_output_dir.get().strip() or "_benchmark_runs")
+        candidates = [root / "retrieval" / "benchmark_summary.md", root / "quality" / "benchmark_summary.md"]
+        existing = [path for path in candidates if path.exists()]
+        if not existing:
+            self._open_existing_file(root / "benchmark_summary.md", "Run a benchmark first; no benchmark_summary.md was found.")
+            return
+        latest = max(existing, key=lambda path: path.stat().st_mtime)
+        self._open_existing_file(latest, "Run a benchmark first; no benchmark_summary.md was found.")
 
     def _open_existing_file(self, path: Path, missing_message: str) -> None:
         path = Path(path)
@@ -1733,7 +1821,7 @@ class IngestApp:
                 if files:
                     sample_path = files[0]
 
-        backend_names = ("auto", "custom", "pymupdf4llm", "marker")
+        backend_names = llm_ingest.SUPPORTED_PDF_BACKENDS
         status_lines: list[str] = []
         for backend_name in backend_names:
             config = PDFConfig(
@@ -1757,6 +1845,12 @@ class IngestApp:
         provenance = llm_ingest.dependency_provenance(privacy_mode=self.privacy_mode.get())
         present = ", ".join(f"{name}={Path(origin).name if origin not in {'missing', 'built-in'} else origin}" for name, origin in provenance.items())
         status_lines.append(f"Dependencies: {present}")
+        optional_health = llm_backends.backend_health(("docling", "mineru", "unstructured"))
+        optional_summary = ", ".join(
+            f"{health.name}={'ready' if health.runnable else ('importable' if health.importable else 'missing')}"
+            for health in optional_health.values()
+        )
+        status_lines.append(f"Optional adapters: {optional_summary}")
 
         for label, text in zip(self.audit_status_lines, status_lines, strict=False):
             label.configure(text=text)
@@ -1890,6 +1984,16 @@ class IngestApp:
                     self._populate_kg_query(payload)
                     self.progress_text.set("Knowledge graph query complete")
                     self._show_page("graph")
+                elif kind == "benchmark_done":
+                    self.benchmark_summary_text.set(f"Benchmark complete. Report: {payload}")
+                    self.progress_text.set("Benchmark complete")
+                    self._show_page("benchmark")
+                elif kind == "benchmark_finished":
+                    self._set_running(False)
+                    self._set_status("Done", "success")
+                    self.worker_thread = None
+                    self.stop_requested.clear()
+                    self._show_page("benchmark")
                 elif kind == "kg_done":
                     self._set_running(False)
                     self._set_status("Done", "success")
@@ -1972,7 +2076,7 @@ class IngestApp:
 
         self.worker_thread = threading.Thread(
             target=self._run_worker,
-            args=(input_mode, pdf_config, input_path, output_path, chunk_size),
+            args=(input_mode, pdf_config, input_path, output_path, chunk_size, self.write_sidecars.get()),
             daemon=True,
         )
         self.worker_thread.start()
@@ -2047,6 +2151,38 @@ class IngestApp:
             args=(index_dir, query, limit, retrieval_mode),
             daemon=True,
         )
+        self.worker_thread.start()
+
+    def _start_quality_benchmark(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        source_dir = Path(self.kg_source_dir.get().strip() or llm_knowledge_graph.DEFAULT_GRAPH_SOURCE_DIR)
+        output_dir = Path(self.benchmark_output_dir.get().strip() or "_benchmark_runs") / "quality"
+        if not source_dir.exists() or not source_dir.is_dir():
+            messagebox.showerror(APP_TITLE, "Choose a Markdown source folder on the Knowledge Graph page first.")
+            return
+        self._set_running(True)
+        self._set_status("Benchmarking...", "running")
+        self.progress_text.set("Running quality benchmark...")
+        self.worker_thread = threading.Thread(target=self._run_quality_benchmark_worker, args=(source_dir, output_dir), daemon=True)
+        self.worker_thread.start()
+
+    def _start_retrieval_benchmark(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        questions_path = Path(self.benchmark_questions_path.get().strip())
+        index_dir = Path(self.kg_index_dir.get().strip() or llm_knowledge_graph.DEFAULT_GRAPH_INDEX_DIR)
+        output_dir = Path(self.benchmark_output_dir.get().strip() or "_benchmark_runs") / "retrieval"
+        if not questions_path.exists() or questions_path.suffix.lower() != ".json":
+            messagebox.showerror(APP_TITLE, "Choose a benchmark questions JSON file.")
+            return
+        if not (index_dir / "graph.json").exists() or not (index_dir / "chunks.jsonl").exists():
+            messagebox.showerror(APP_TITLE, "Build the knowledge graph before running retrieval benchmarks.")
+            return
+        self._set_running(True)
+        self._set_status("Benchmarking...", "running")
+        self.progress_text.set("Running retrieval benchmark...")
+        self.worker_thread = threading.Thread(target=self._run_retrieval_benchmark_worker, args=(questions_path, index_dir, output_dir), daemon=True)
         self.worker_thread.start()
 
     def _request_stop(self) -> None:
@@ -2299,12 +2435,13 @@ class IngestApp:
         input_path: Path,
         output_path: Path,
         chunk_size: int,
+        write_sidecars: bool,
     ) -> None:
         writer = QueueWriter(self.log_queue)
 
         try:
             with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
-                self._run_conversion(input_mode, config, input_path, output_path, chunk_size)
+                self._run_conversion(input_mode, config, input_path, output_path, chunk_size, write_sidecars)
             self.log_queue.put(("done", "done"))
         except llm_ingest.ConversionCancelled as exc:
             message = str(exc).strip() or "Run cancelled by user."
@@ -2409,6 +2546,32 @@ class IngestApp:
             self.log_queue.put(("log", error_text + "\n"))
             self.log_queue.put(("error", error_text))
 
+    def _run_quality_benchmark_worker(self, source_dir: Path, output_dir: Path) -> None:
+        writer = QueueWriter(self.log_queue)
+        try:
+            with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
+                report = llm_benchmark.run_quality_benchmark([source_dir], output_dir)
+                print(f"Quality benchmark complete: {report['totals']['finding_count']} findings.")
+            self.log_queue.put(("benchmark_done", str(output_dir / "benchmark_summary.md")))
+            self.log_queue.put(("benchmark_finished", "done"))
+        except BaseException as exc:
+            error_text = self._format_worker_error(exc)
+            self.log_queue.put(("log", error_text + "\n"))
+            self.log_queue.put(("error", error_text))
+
+    def _run_retrieval_benchmark_worker(self, questions_path: Path, index_dir: Path, output_dir: Path) -> None:
+        writer = QueueWriter(self.log_queue)
+        try:
+            with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
+                report = llm_benchmark.run_retrieval_benchmark(questions_path, index_dir, output_dir)
+                print(f"Retrieval benchmark complete: {report['summary']['question_count']} questions.")
+            self.log_queue.put(("benchmark_done", str(output_dir / "benchmark_summary.md")))
+            self.log_queue.put(("benchmark_finished", "done"))
+        except BaseException as exc:
+            error_text = self._format_worker_error(exc)
+            self.log_queue.put(("log", error_text + "\n"))
+            self.log_queue.put(("error", error_text))
+
     def _run_conversion(
         self,
         input_mode: str,
@@ -2416,6 +2579,7 @@ class IngestApp:
         input_path: Path,
         output_path: Path,
         chunk_size: int,
+        write_sidecars: bool,
     ) -> None:
         if input_mode == "file":
             self.log_queue.put(("progress", f"Processing 1/1: {input_path.name}"))
@@ -2425,6 +2589,7 @@ class IngestApp:
                 chunk_size=chunk_size,
                 pdf_config=config,
                 cancel_event=self.stop_requested,
+                write_sidecars=write_sidecars,
             )
             return
 
@@ -2442,6 +2607,7 @@ class IngestApp:
                 chunk_size=chunk_size,
                 pdf_config=config,
                 cancel_event=self.stop_requested,
+                write_sidecars=write_sidecars,
             )
         print(f"\nDone. Output in {output_path}")
 

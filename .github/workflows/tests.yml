@@ -22,7 +22,7 @@ jobs:
 
       - name: Compile
         run: |
-          python -m py_compile llm_ingest.py llm_ingest_app.pyw llm_knowledge_graph.py llm_pdf_cleanup.py llm_figure_cleanup.py llm_audit_assertions.py llm_quality_report.py pdf_worker_runner.py marker_sidecar_runner.py
+          python -m py_compile llm_ingest.py llm_ingest_app.pyw llm_knowledge_graph.py llm_pdf_cleanup.py llm_figure_cleanup.py llm_audit_assertions.py llm_quality_report.py llm_benchmark.py llm_structured_output.py pdf_worker_runner.py marker_sidecar_runner.py
 
       - name: Unit tests
         run: |

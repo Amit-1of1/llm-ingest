@@ -50,8 +50,10 @@ from pathlib import Path
 from typing import Any
 
 import llm_audit_assertions
+import llm_backends
 import llm_figure_cleanup
 import llm_pdf_cleanup
+import llm_structured_output
 
 
 MANIFEST_VERSION = 5
@@ -69,6 +71,7 @@ DEFAULT_MAX_INPUT_MB = 250
 DEFAULT_MAX_PDF_PAGES = 500
 DEFAULT_MAX_EXTRACTED_ASSETS = 500
 DEFAULT_MAX_AUDIT_DOWNLOAD_MB = 250
+SUPPORTED_PDF_BACKENDS = ("auto", "custom", "pymupdf4llm", "marker", "docling", "mineru", "unstructured")
 _PDF_WORKER_ENV = "LLM_INGEST_PDF_WORKER"
 _TRUSTED_MARKER_ENV = "LLM_INGEST_ALLOW_EXTERNAL_MARKER_PYTHON"
 
@@ -1080,10 +1083,25 @@ def _probe_pymupdf4llm_backend() -> PDFBackendCandidate:
     return _backend_candidate("pymupdf4llm", False, False, "PyMuPDF4LLM is not installed.")
 
 
+def _probe_optional_adapter_backend(name: str) -> PDFBackendCandidate:
+    try:
+        health = llm_backends.get_backend_adapter(name).health()
+    except ValueError:
+        return _backend_candidate(name, False, False, "Unknown optional backend adapter.")
+    return _backend_candidate(
+        name=health.name,
+        importable=health.importable,
+        runnable=health.runnable,
+        detail=f"{health.detail} {health.install_hint}".strip(),
+    )
+
+
 def _pdf_backend_candidate_names(requested_backend: str, pdf_config: PDFConfig, sample_path: Path | None = None) -> list[str]:
     backend = (requested_backend or "auto").lower()
     if backend == "marker":
         return ["marker", "pymupdf4llm", "custom"]
+    if backend in {"docling", "mineru", "unstructured"}:
+        return [backend, "custom", "pymupdf4llm"]
     if backend == "pymupdf4llm":
         return ["pymupdf4llm", "custom"]
     if backend == "custom":
@@ -1190,6 +1208,8 @@ def inspect_pdf_backend_plan(
             candidate = _probe_marker_backend(pdf_config, require_models=require_marker_models)
         elif name == "pymupdf4llm":
             candidate = _probe_pymupdf4llm_backend()
+        elif name in {"docling", "mineru", "unstructured"}:
+            candidate = _probe_optional_adapter_backend(name)
         else:
             runnable, detail, route_reason = _custom_backend_status(pdf_config, sample_path=sample_path)
             importable = importlib.util.find_spec("pymupdf") is not None or importlib.util.find_spec("fitz") is not None
@@ -1296,6 +1316,9 @@ def _extract_pdf_direct(
                 return _extract_pdf_with_marker(path, output_path, active_config, cancel_event=cancel_event), "marker"
             if candidate.name == "pymupdf4llm":
                 return _extract_pdf_with_pymupdf4llm(path, output_path, active_config, cancel_event=cancel_event), "pymupdf4llm"
+            if candidate.name in {"docling", "mineru", "unstructured"}:
+                extraction = llm_backends.get_backend_adapter(candidate.name).extract(path)
+                return extraction.text, candidate.name
             return _extract_pdf_custom(path, output_path, active_config, cancel_event=cancel_event), "custom"
         except SystemExit as exc:
             detail = _system_exit_message(exc) or f"{candidate.name} backend failed."
@@ -5236,6 +5259,7 @@ def convert_file_with_details(
     chunk_size: int = 0,
     pdf_config: PDFConfig | None = None,
     cancel_event: Any | None = None,
+    write_sidecars: bool = False,
 ) -> dict[str, Any]:
     _check_cancel(cancel_event)
     ext = input_path.suffix.lower()
@@ -5286,11 +5310,15 @@ def convert_file_with_details(
             _check_cancel(cancel_event)
             chunk_path = output_path.parent / f"{stem}_chunk{i:03d}.md"
             safe_atomic_write_text(chunk_path, chunk, encoding="utf-8")
+            if write_sidecars:
+                llm_structured_output.write_markdown_sidecars(chunk_path, input_path, chunk)
         print(f"done: {tokens:,} tokens -> {len(chunks)} chunks")
         chunk_count = len(chunks)
     else:
         _check_cancel(cancel_event)
         safe_atomic_write_text(output_path, text, encoding="utf-8")
+        if write_sidecars:
+            llm_structured_output.write_markdown_sidecars(output_path, input_path, text)
         print(f"done: {tokens:,} tokens -> {output_path.name}")
         chunk_count = 1
     _check_cancel(cancel_event)
@@ -5310,6 +5338,7 @@ def convert_file(
     chunk_size: int = 0,
     pdf_config: PDFConfig | None = None,
     cancel_event: Any | None = None,
+    write_sidecars: bool = False,
 ) -> None:
     convert_file_with_details(
         input_path,
@@ -5317,6 +5346,7 @@ def convert_file(
         chunk_size=chunk_size,
         pdf_config=pdf_config,
         cancel_event=cancel_event,
+        write_sidecars=write_sidecars,
     )
 
 def _is_already_processed(
@@ -5916,6 +5946,7 @@ def _build_convert_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", help="Output file (single-file mode only)")
     parser.add_argument("-c", "--chunk", type=int, default=0, help="Max tokens per chunk (0 = no chunking)")
     parser.add_argument("--out-dir", default="llm_ready", help="Output directory for batch mode (default: ./llm_ready)")
+    parser.add_argument("--write-sidecars", action="store_true", help="Write .extraction.json and .quality.json sidecars beside generated Markdown.")
     parser.add_argument("--ocr-language", default="eng", help="OCR language(s) for PDFs, e.g. eng or eng+deu")
     parser.add_argument("--ocr-dpi", type=int, default=200, help="OCR DPI for PDFs")
     parser.add_argument("--tessdata", help="Path to the Tesseract tessdata directory")
@@ -5929,7 +5960,7 @@ def _build_convert_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-hardened-mode", action="store_true", help="Run PDF extraction in-process for compatibility.")
     parser.add_argument(
         "--pdf-backend",
-        choices=("auto", "custom", "pymupdf4llm", "marker"),
+        choices=SUPPORTED_PDF_BACKENDS,
         default="auto",
         help="PDF extraction backend: auto, custom, pymupdf4llm, or marker",
     )
@@ -6014,7 +6045,7 @@ def _run_convert_cli(args: argparse.Namespace) -> None:
     input_path = Path(args.input)
     if input_path.is_file():
         output_path = Path(args.output) if args.output else input_path.with_suffix(".md")
-        convert_file(input_path, output_path, chunk_size=args.chunk, pdf_config=pdf_config)
+        convert_file(input_path, output_path, chunk_size=args.chunk, pdf_config=pdf_config, write_sidecars=args.write_sidecars)
     elif input_path.is_dir():
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -6022,7 +6053,7 @@ def _run_convert_cli(args: argparse.Namespace) -> None:
         batch_plan = build_batch_targets(files, input_path, out_dir)
         print(f"\nFound {len(files)} supported files in {input_path}\n")
         for file, target in batch_plan:
-            convert_file(file, target, chunk_size=args.chunk, pdf_config=pdf_config)
+            convert_file(file, target, chunk_size=args.chunk, pdf_config=pdf_config, write_sidecars=args.write_sidecars)
         print(f"\nDone. Output in ./{out_dir}/")
     else:
         sys.exit(f"Error: '{args.input}' is not a valid file or directory.")

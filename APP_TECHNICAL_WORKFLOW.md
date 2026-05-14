@@ -24,6 +24,9 @@ Core capabilities:
 | `llm_pdf_cleanup.py` | Document-level Markdown cleanup: titles, frontmatter, boilerplate, headings, references, dehyphenation. |
 | `llm_ingest_app.pyw` | Tkinter desktop GUI for workflow conversion, PDF settings, diagnostics, audit, activity log, and knowledge graph operations. |
 | `llm_knowledge_graph.py` | Knowledge graph and RAG engine for generated Markdown. |
+| `llm_backends/` | Optional backend adapter registry for PyMuPDF4LLM, Docling, Marker, MinerU, and Unstructured. |
+| `llm_benchmark.py` | Offline benchmark harness for Markdown quality and graph retrieval utility. |
+| `llm_structured_output.py` | Optional `.extraction.json` and `.quality.json` sidecars for generated Markdown. |
 | `pdf_worker_runner.py` | Isolated subprocess runner for hardened PDF extraction. |
 | `marker_sidecar_runner.py` | Sidecar runner for Marker PDF extraction. |
 | `launch_llm_ingest_app.bat` | Windows launcher for the GUI. |
@@ -94,6 +97,21 @@ python llm_ingest.py graph build --source-dir llm_ready --index-dir _knowledge_g
 
 ```powershell
 python llm_ingest.py graph query "acid treatment imine bonds mechanical recovery" --index-dir _knowledge_graph --mode hybrid --limit 8
+```
+
+### Structured Sidecars
+
+```powershell
+python llm_ingest.py downloaded --out-dir llm_ready --write-sidecars
+```
+
+This writes `paper.extraction.json` and `paper.quality.json` beside generated Markdown.
+
+### Benchmarks
+
+```powershell
+python llm_benchmark.py quality llm_ready --output-dir _benchmark_runs/quality
+python llm_benchmark.py retrieval --questions benchmarks/questions.json --index-dir _knowledge_graph --output-dir _benchmark_runs/retrieval
 ```
 
 ## Conversion Workflow
@@ -521,6 +539,6 @@ python llm_ingest.py graph build --source-dir llm_ready --index-dir _kg_smoke --
 - Split figure/caption recovery into its own module with tests.
 - Add more cleanup fixtures from real bad PDFs.
 - Add an audit assertion suite that fails on known regressions.
-- Add optional richer embedding backend while preserving local/private defaults.
-- Add a small report that compares old vs new Markdown quality per file.
-- Add UI buttons to open latest `audit_summary.md`, `graph_context.md`, and `last_query.md`.
+- Expand the real-PDF benchmark corpus with more scored examples.
+- Add dedicated formula reconstruction for equations that are only present as images.
+- Add dedicated dense-table reconstruction beyond cleanup and backend routing.

@@ -86,6 +86,7 @@ def normalize_document_structure(text: str, source_path: Path | None = None) -> 
     text = remove_running_headers_inline(text)
     text = remove_placeholder_affiliations(text)
     text = repair_hyphenated_pdf_breaks(text)
+    text = mark_missing_formula_placeholders(text)
     text = normalize_reference_blocks(text)
     text = qualify_repeated_section_headings(text)
     text = reorder_intro_before_results(text)
@@ -629,30 +630,99 @@ def repair_hyphenated_pdf_breaks(text: str) -> str:
     return text
 
 
+def mark_missing_formula_placeholders(text: str) -> str:
+    marker = "[Formula omitted by PDF extraction; review source PDF.]"
+
+    def replace_missing_formula(match: re.Match[str]) -> str:
+        prefix = match.group(1).rstrip()
+        return f"{prefix}\n\n{marker}"
+
+    pattern = (
+        r"(?im)^(.{0,180}\b(?:following equation|equation|formula|given by)\s*:)\s*"
+        r"(?=\n\s*(?:\n|#{1,6}\s|\Z))"
+    )
+    return re.sub(pattern, replace_missing_formula, text)
+
+
 def normalize_reference_blocks(text: str) -> str:
     lines = text.splitlines()
     output: list[str] = []
-    in_references = False
-    for line in lines:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         stripped = line.strip()
         if re.match(r"^## References\b", stripped, flags=re.IGNORECASE):
-            in_references = True
             output.append("## References")
-            continue
-        if stripped.startswith("## ") and not re.match(r"^## References\b", stripped, flags=re.IGNORECASE):
-            in_references = False
-            output.append(line)
-            continue
-        if in_references:
-            cleaned = remove_running_headers_inline(line).strip()
-            if not cleaned:
-                output.append("")
-                continue
-            parts = re.split(r"(?<!^)\s+(?=\d{1,3}\.\s+[A-Z])", cleaned)
-            output.extend(part.strip() for part in parts if part.strip())
+            index += 1
+            reference_lines: list[str] = []
+            while index < len(lines):
+                next_line = lines[index]
+                next_stripped = next_line.strip()
+                if next_stripped.startswith("## ") and not re.match(r"^## References\b", next_stripped, flags=re.IGNORECASE):
+                    break
+                if re.match(r"^## References\b", next_stripped, flags=re.IGNORECASE):
+                    index += 1
+                    continue
+                reference_lines.append(next_line)
+                index += 1
+            output.extend(normalize_reference_lines(reference_lines))
             continue
         output.append(line)
+        index += 1
     return "\n".join(output)
+
+
+def normalize_reference_lines(lines: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for line in lines:
+        cleaned = normalize_reference_entry_text(remove_running_headers_inline(line).strip())
+        if not cleaned:
+            continue
+        parts = re.split(r"(?<!^)\s+(?=\d{1,3}\.\s+\S)", cleaned)
+        expanded.extend(part.strip() for part in parts if part.strip())
+
+    entries: list[str] = []
+    current = ""
+    for part in expanded:
+        if re.match(r"^\d{1,3}\.\s+", part):
+            if current:
+                entries.append(normalize_reference_entry_text(current))
+            current = part
+            continue
+        if current and looks_like_reference_continuation(part):
+            current = f"{current} {part}".strip()
+            continue
+        if current:
+            entries.append(normalize_reference_entry_text(current))
+            current = ""
+        entries.append(normalize_reference_entry_text(part))
+    if current:
+        entries.append(normalize_reference_entry_text(current))
+    return [entry for entry in entries if entry]
+
+
+def looks_like_reference_continuation(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if re.match(r"^\d{1,3}\.\s+", stripped):
+        return False
+    if re.search(r"\b(?:J\.|Journal|Nature|Science|Biomacromolecules|Biochemistry|Chem\.|Soc\.|Proc\.|Acad\.|Commun\.|Materials|Macromol\.)\b", stripped):
+        return True
+    if re.search(r"\b\d{1,5}\s*[-–]\s*\d{1,5}\b|\(\d{4}\)|\b\d{4}\b", stripped):
+        return True
+    if stripped[:1].islower():
+        return True
+    return len(stripped.split()) <= 18 and stripped.endswith((".", ";", ","))
+
+
+def normalize_reference_entry_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\bdoi:\s*(?:doi:\s*)+", "doi: ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bdoi:\s*10\.\s+", "doi: 10.", text, flags=re.IGNORECASE)
+    text = re.sub(r"(10\.\d{4,9}/)\s+", r"\1", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return text
 
 
 def qualify_repeated_section_headings(text: str) -> str:

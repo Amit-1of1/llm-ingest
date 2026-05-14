@@ -14,6 +14,8 @@ The app is built for a trusted local researcher processing untrusted PDFs. It ke
 - Query with lexical, vector, or hybrid graph + vector retrieval.
 - Use local hash or TF-IDF weighted hash embeddings without sending text to a remote service.
 - Run PDF extraction in a hardened subprocess with file, page, asset, and timeout limits.
+- Optionally write `.extraction.json` and `.quality.json` sidecars beside generated Markdown.
+- Benchmark Markdown quality and graph retrieval utility offline.
 
 ## Quick Start
 
@@ -73,6 +75,12 @@ Use the stronger local TF-IDF weighted embedding backend:
 python llm_ingest.py graph build --source-dir llm_ready --index-dir _knowledge_graph --embedding-model tfidf-hash
 ```
 
+Write structured sidecars while converting:
+
+```powershell
+python llm_ingest.py downloaded --out-dir llm_ready --write-sidecars
+```
+
 Query the graph:
 
 ```powershell
@@ -89,6 +97,18 @@ Create a before/after quality report:
 
 ```powershell
 python llm_quality_report.py --before old_llm_ready --after llm_ready --output _audit_reports\quality_compare.md
+```
+
+Run an offline benchmark:
+
+```powershell
+python llm_benchmark.py quality llm_ready --output-dir _benchmark_runs\quality
+```
+
+Run a retrieval benchmark against an existing graph:
+
+```powershell
+python llm_benchmark.py retrieval --questions benchmarks\questions.json --index-dir _knowledge_graph --output-dir _benchmark_runs\retrieval
 ```
 
 ## Audit Workflow
@@ -110,9 +130,35 @@ Add `--download-missing` to populate the local cache. Audit outputs include:
 
 ## Optional Marker Backend
 
-Marker is treated as optional because it is heavier and may require a sidecar Python environment and model weights. The default app remains usable with PyMuPDF and PyMuPDF4LLM.
+Marker, Docling, MinerU, and Unstructured are treated as optional because they are heavier and may require sidecar environments or model/data downloads. The default app remains usable with PyMuPDF and PyMuPDF4LLM.
 
 If you configure Marker, prefer a dedicated sidecar interpreter and keep hardened mode enabled.
+
+Optional install files:
+
+- `requirements-docling.txt`
+- `requirements-mineru.txt`
+- `requirements-unstructured.txt`
+- `requirements-optional.txt` for Marker and richer local embeddings
+
+Docling and Unstructured have first-class adapter paths when their optional packages are installed. MinerU is detected through its Python package plus a supported local CLI executable (`magic-pdf` or `mineru`) because its install layouts vary more across environments.
+
+## Graph Embeddings
+
+The knowledge graph stays local by default. Supported embedding modes are:
+
+- `hash`: dependency-free local vectors
+- `tfidf-hash`: stronger dependency-free local vectors
+- `sentence-transformers`: optional richer local embeddings
+- `none`: graph and lexical retrieval only
+
+Example:
+
+```powershell
+python llm_ingest.py graph build --source-dir llm_ready --index-dir _knowledge_graph --embedding-model sentence-transformers
+```
+
+Set `LLM_KG_SENTENCE_TRANSFORMER_MODEL` to choose a local Sentence Transformers model. The default is `sentence-transformers/all-MiniLM-L6-v2`.
 
 ## Privacy and Safety
 
@@ -133,7 +179,7 @@ Run:
 
 ```powershell
 python -m unittest discover -s tests
-python -m py_compile llm_ingest.py llm_ingest_app.pyw llm_knowledge_graph.py llm_pdf_cleanup.py llm_figure_cleanup.py llm_audit_assertions.py llm_quality_report.py
+python -m py_compile llm_ingest.py llm_ingest_app.pyw llm_knowledge_graph.py llm_pdf_cleanup.py llm_figure_cleanup.py llm_audit_assertions.py llm_quality_report.py llm_benchmark.py llm_structured_output.py pdf_worker_runner.py marker_sidecar_runner.py
 ```
 
 ## Project Docs

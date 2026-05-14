@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import json
 import math
+import os
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
@@ -26,7 +27,8 @@ DEFAULT_GRAPH_INDEX_DIR = "_knowledge_graph"
 DEFAULT_GRAPH_SOURCE_DIR = "llm_ready"
 DEFAULT_EMBEDDING_MODEL = "hash"
 DEFAULT_EMBEDDING_DIMENSIONS = 384
-SUPPORTED_EMBEDDING_MODELS = ("hash", "tfidf-hash", "none")
+SUPPORTED_EMBEDDING_MODELS = ("hash", "tfidf-hash", "sentence-transformers", "none")
+DEFAULT_SENTENCE_TRANSFORMER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_MAX_GRAPH_FILE_MB = 200
 DEFAULT_MAX_GRAPH_CHUNKS = 100_000
 DEFAULT_MAX_GRAPH_CHUNK_TEXT_BYTES = 2_000_000
@@ -1114,8 +1116,10 @@ def _normalize_embedding_model(model: str) -> str:
     normalized = (model or "none").strip().lower()
     if normalized in {"off", "false", "0"}:
         return "none"
+    if normalized in {"sentence_transformers", "sentence-transformer", "sbert"}:
+        return "sentence-transformers"
     if normalized not in SUPPORTED_EMBEDDING_MODELS:
-        raise ValueError("Embedding model must be hash, tfidf-hash, or none.")
+        raise ValueError("Embedding model must be hash, tfidf-hash, sentence-transformers, or none.")
     return normalized
 
 
@@ -1126,6 +1130,8 @@ def _embedding_text(chunk: KGChunk) -> str:
 def _embeddings_for_chunks(chunks: list[KGChunk], model: str, dimensions: int) -> dict[str, dict[int, float]]:
     if model == "tfidf-hash":
         return _tfidf_hash_embeddings(chunks, dimensions)
+    if model == "sentence-transformers":
+        return _sentence_transformer_embeddings(chunks, dimensions)
     return {chunk.id: _hash_embedding(_embedding_text(chunk), dimensions) for chunk in chunks}
 
 
@@ -1138,6 +1144,8 @@ def _query_embedding(
 ) -> dict[int, float]:
     if model == "tfidf-hash":
         return _tfidf_hash_embedding(text, dimensions, feature_document_frequency, total_documents)
+    if model == "sentence-transformers":
+        return _sentence_transformer_embedding(text, dimensions)
     return _hash_embedding(text, dimensions)
 
 
@@ -1167,6 +1175,57 @@ def _tfidf_hash_embedding(
 ) -> dict[int, float]:
     features = _embedding_features(text)
     return _hash_features(_tfidf_weighted_features(features, document_frequency, max(1, total_documents)), dimensions)
+
+
+def _sentence_transformer_model_name() -> str:
+    return os.environ.get("LLM_KG_SENTENCE_TRANSFORMER_MODEL", DEFAULT_SENTENCE_TRANSFORMER_MODEL).strip() or DEFAULT_SENTENCE_TRANSFORMER_MODEL
+
+
+def _load_sentence_transformer_model() -> Any:
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError as exc:
+        raise RuntimeError(
+            "The sentence-transformers embedding backend requires `pip install sentence-transformers`. "
+            "Use `--embedding-model tfidf-hash` to stay dependency-light."
+        ) from exc
+    return SentenceTransformer(_sentence_transformer_model_name())
+
+
+def _sentence_transformer_embeddings(chunks: list[KGChunk], dimensions: int) -> dict[str, dict[int, float]]:
+    if not chunks:
+        return {}
+    model = _load_sentence_transformer_model()
+    texts = [_embedding_text(chunk) for chunk in chunks]
+    vectors = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    return {
+        chunk.id: _dense_vector_to_sparse(vector, dimensions)
+        for chunk, vector in zip(chunks, vectors)
+    }
+
+
+def _sentence_transformer_embedding(text: str, dimensions: int) -> dict[int, float]:
+    model = _load_sentence_transformer_model()
+    vector = model.encode([text], normalize_embeddings=True, show_progress_bar=False)
+    try:
+        first = vector[0] if len(vector) else []
+    except TypeError:
+        first = []
+    return _dense_vector_to_sparse(first, dimensions)
+
+
+def _dense_vector_to_sparse(vector: Any, dimensions: int) -> dict[int, float]:
+    try:
+        values = vector.tolist()
+    except AttributeError:
+        values = list(vector)
+    if not values:
+        return {}
+    values = [float(value) for value in values[:dimensions]]
+    norm = math.sqrt(sum(value * value for value in values))
+    if norm <= 0:
+        return {}
+    return {index: round(value / norm, 6) for index, value in enumerate(values) if abs(value) > 1e-9}
 
 
 def _embedding_feature_document_frequency(chunks: list[KGChunk]) -> Counter[str]:

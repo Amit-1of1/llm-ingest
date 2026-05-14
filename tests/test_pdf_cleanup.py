@@ -64,6 +64,38 @@ Data reproduced from previous publication (reproduced with permission[10], Copyr
         self.assertIn("1. Alpha, A. First article.", cleaned)
         self.assertIn("\n2. Beta, B. Second article.", cleaned)
 
+    def test_reference_continuations_are_joined_and_doi_spacing_is_cleaned(self) -> None:
+        text = """# Example
+
+## References
+
+1. Alpha, A. Domain common to dragline proteins.
+
+Biomacromolecules 7, 3120-3124 (2006).
+
+2. Beta, B. Second article. doi: doi: 10. 1038/example
+
+## Methods
+
+Body.
+"""
+        cleaned = llm_pdf_cleanup.normalize_document_structure(text, source_path=Path("Example.pdf"))
+        self.assertIn("1. Alpha, A. Domain common to dragline proteins. Biomacromolecules 7, 3120-3124 (2006).", cleaned)
+        self.assertIn("2. Beta, B. Second article. doi: 10.1038/example", cleaned)
+        self.assertIn("## Methods", cleaned)
+
+    def test_missing_formula_after_equation_intro_is_marked(self) -> None:
+        text = """# Example
+
+The modulus was calculated using following equation:
+
+## Results
+
+More text.
+"""
+        cleaned = llm_pdf_cleanup.normalize_document_structure(text, source_path=Path("Example.pdf"))
+        self.assertIn("[Formula omitted by PDF extraction; review source PDF.]", cleaned)
+
     def test_real_empty_heading_fixture_removes_blank_headings(self) -> None:
         cleaned = llm_pdf_cleanup.normalize_document_structure(
             fixture_text("empty_headings.md"),

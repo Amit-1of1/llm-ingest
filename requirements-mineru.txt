@@ -1,0 +1,3 @@
+# MinerU packaging changes over time; install the current official package
+# for your platform and keep it in a sidecar environment when possible.
+mineru

@@ -25,6 +25,7 @@ _audit_corpus_cache/
 _audit_reports/
 _audit_backend_matrix/
 _audit_plan_temp/
+_benchmark_runs/
 _tmp_continue/
 _tmp_quality/
 _tmp_quality_multi/
