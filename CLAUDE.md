@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **papers** (1914 symbols, 3742 relationships, 172 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **llm-ingest** (1928 symbols, 3755 relationships, 173 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -24,10 +24,10 @@ This project is indexed by GitNexus as **papers** (1914 symbols, 3742 relationsh
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/papers/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/papers/clusters` | All functional areas |
-| `gitnexus://repo/papers/processes` | All execution flows |
-| `gitnexus://repo/papers/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/llm-ingest/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/llm-ingest/clusters` | All functional areas |
+| `gitnexus://repo/llm-ingest/processes` | All execution flows |
+| `gitnexus://repo/llm-ingest/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
