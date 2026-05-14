@@ -1,0 +1,3 @@
+# Optional heavier PDF backend.
+# Install in a sidecar interpreter when possible.
+marker-pdf

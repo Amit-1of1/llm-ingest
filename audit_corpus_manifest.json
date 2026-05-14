@@ -1,0 +1,131 @@
+[
+  {
+    "id": "modern_multicolumn_science",
+    "category": "modern_multi_column_science",
+    "source_url": "https://www.nature.com/articles/s41467-022-32822-y.pdf",
+    "filename": "structural_basis_n-formyl_peptides_nature_s41467-022-32822-y.pdf",
+    "expected_traits": [
+      "multi-column layout",
+      "inline figures",
+      "journal frontmatter",
+      "supplement links"
+    ],
+    "recommended_backends": [
+      "auto",
+      "custom:off",
+      "pymupdf4llm"
+    ],
+    "sha256": "7cd924e25dbb373ade0b00d5c0cef987e4d69f67d48465e9bd3a0162849eac07",
+    "license_note": "Nature Communications open-access article PDF."
+  },
+  {
+    "id": "historical_scanned_report",
+    "category": "scanned_ocr_stress",
+    "source_url": "https://ntrs.nasa.gov/api/citations/19650020861/downloads/19650020861.pdf",
+    "filename": "nasa_mutual_impedance_scanned_report_19650020861.pdf",
+    "expected_traits": [
+      "scanned pages",
+      "older typography",
+      "weak OCR",
+      "technical report layout"
+    ],
+    "recommended_backends": [
+      "custom",
+      "marker",
+      "auto"
+    ],
+    "sha256": "626afe337cc4e26750c304640deaca591184b3dba751e98474f1e7842fc1d3ab",
+    "license_note": "NASA Technical Reports Server public-use technical report PDF."
+  },
+  {
+    "id": "equation_heavy_graph_ml",
+    "category": "equation_heavy_born_digital",
+    "source_url": "https://arxiv.org/pdf/1605.05273.pdf",
+    "filename": "learning_cnn_for_graphs_arxiv1605.05273.pdf",
+    "expected_traits": [
+      "display equations",
+      "algorithmic notation",
+      "two-column math paper"
+    ],
+    "recommended_backends": [
+      "custom:off",
+      "marker",
+      "auto"
+    ],
+    "sha256": "bd35955b1fbf201f49fa4bd7f30de5bc9d21287ee9a9c9f9ae80925654f455d7",
+    "license_note": "arXiv open-access PDF."
+  },
+  {
+    "id": "nist_math_handbook_report",
+    "category": "math_heavy_technical_report",
+    "source_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=900822",
+    "filename": "towards_revised_nbs_handbook_math_functions_nist900822.pdf",
+    "expected_traits": [
+      "formula-dense prose",
+      "technical notation",
+      "report frontmatter"
+    ],
+    "recommended_backends": [
+      "custom:off",
+      "marker",
+      "auto"
+    ],
+    "sha256": "80152aef90ac13daf9d02265d88235206cd4de6271d324408777cc588b9d2171",
+    "license_note": "NIST public technical publication PDF."
+  },
+  {
+    "id": "nist_handbook_44_tables",
+    "category": "dense_tables_and_units",
+    "source_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=961198",
+    "filename": "nist_handbook_44_2026_nist961198.pdf",
+    "expected_traits": [
+      "dense tables",
+      "units and tolerances",
+      "regulatory handbook layout"
+    ],
+    "recommended_backends": [
+      "custom:off",
+      "pymupdf4llm",
+      "auto"
+    ],
+    "sha256": "f6f782b95f10c559769b1742c4b718622cb61380a007a66279603afa0be72010",
+    "license_note": "NIST handbook PDF."
+  },
+  {
+    "id": "irs_form_1040",
+    "category": "fillable_form_fixed_layout",
+    "source_url": "https://www.irs.gov/pub/irs-pdf/f1040.pdf",
+    "filename": "irs_form_1040_2025.pdf",
+    "expected_traits": [
+      "fillable form fields",
+      "boxes and lines",
+      "sparse narrative text"
+    ],
+    "recommended_backends": [
+      "custom:off",
+      "pymupdf4llm",
+      "auto"
+    ],
+    "sha256": "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
+    "license_note": "IRS public form PDF."
+  },
+  {
+    "id": "oecd_long_report",
+    "category": "long_report_tables_and_narrative",
+    "source_url": "https://www.oecd.org/content/dam/oecd/en/publications/reports/2024/10/nurturing-social-and-emotional-learning-across-the-globe_298ee964/32b647d0-en.pdf",
+    "filename": "oecd_social_emotional_learning_2024.pdf",
+    "expected_traits": [
+      "long narrative report",
+      "tables",
+      "figures",
+      "publisher frontmatter"
+    ],
+    "recommended_backends": [
+      "auto",
+      "custom:off",
+      "pymupdf4llm"
+    ],
+    "sha256": "4fd29fbe7b77db515365057ba409ecc19c4419ec3a98d9a84bcd284e7976b5bd",
+    "license_note": "OECD public report PDF."
+  }
+]
