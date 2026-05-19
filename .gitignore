@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+.build_venv/
+build/
+dist/
+release/
 
 downloaded/
 llm_ready/
@@ -27,9 +32,11 @@ _audit_backend_matrix/
 _audit_plan_temp/
 _benchmark_runs/
 _tmp_continue/
+_tmp_packaging_smoke/
 _tmp_quality/
 _tmp_quality_multi/
 _tmp_security_smoke/
 _tmp_quality_artifacts/
 _tmp_structural_quality/
 _kg_artifact_smoke/
+_benchmark_reports/

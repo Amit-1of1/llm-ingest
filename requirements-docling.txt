@@ -1,1 +1,1 @@
-docling
+-r requirements/docling.txt

@@ -30,7 +30,7 @@ Core capabilities:
 | `pdf_worker_runner.py` | Isolated subprocess runner for hardened PDF extraction. |
 | `marker_sidecar_runner.py` | Sidecar runner for Marker PDF extraction. |
 | `launch_llm_ingest_app.bat` | Windows launcher for the GUI. |
-| `audit_corpus_manifest.json` | Repo-tracked audit corpus manifest; binaries are cached locally, not committed. |
+| `config/audit_corpus_manifest.json` | Repo-tracked audit corpus manifest; binaries are cached locally, not committed. |
 | `tests/test_pdf_cleanup.py` | Focused regression tests for document-level cleanup. |
 
 ## Desktop App Structure
@@ -84,7 +84,7 @@ python llm_ingest.py downloaded\paper.pdf --output llm_ready\paper.md
 ### Audit
 
 ```powershell
-python llm_ingest.py audit --manifest audit_corpus_manifest.json --cache-dir _audit_corpus_cache --report-dir _audit_reports --download-missing
+python llm_ingest.py audit --manifest config/audit_corpus_manifest.json --cache-dir _audit_corpus_cache --report-dir _audit_reports --download-missing
 ```
 
 ### Graph Build
@@ -315,7 +315,7 @@ Audit mode is designed to reveal quality and backend regressions.
 
 Inputs:
 
-- Repo-tracked manifest: `audit_corpus_manifest.json`.
+- Repo-tracked manifest: `config/audit_corpus_manifest.json`.
 - Local cache: `_audit_corpus_cache/`.
 - Local baseline folders, usually `downloaded/`.
 - Backend matrix, for example `auto,custom:off,pymupdf4llm,marker`.

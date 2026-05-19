@@ -1,0 +1,10 @@
+# Optional heavier PDF backend.
+# Install in a sidecar interpreter when possible.
+marker-pdf
+
+# Optional richer local embedding backend for graph/RAG retrieval.
+sentence-transformers
+
+# Optional local OCR/image support for figure-aware RAG.
+pillow
+pytesseract
